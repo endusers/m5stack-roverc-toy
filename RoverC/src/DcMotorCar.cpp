@@ -4,10 +4,10 @@
  * @brief       DcMotorCar
  * @note        なし
  * 
- * @version     1.0.0
- * @date        2021/10/15
+ * @version     1.1.0
+ * @date        2022/08/15
  * 
- * @copyright   (C) 2021 Motoyuki Endo
+ * @copyright   (C) 2021-2022 Motoyuki Endo
  */
 #include "DcMotorCar.h"
 
@@ -23,6 +23,16 @@
 
 #define OFF                         (0)
 #define ON                          (1)
+
+#define ROS_INFO(...)                                                            \
+do{                                                                              \
+    snprintf( _logMsg.msg.data, _logMsg.msg.capacity, __VA_ARGS__ );             \
+    _logMsg.msg.size = strlen(_logMsg.msg.data);                                 \
+    rcl_publish( &_pubLog, &_logMsg, NULL );                                     \
+}while(0)                                                                        \
+
+// TODO : #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+// TODO : #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 
 
 //----------------------------------------------------------------
@@ -41,8 +51,53 @@ DcMotorCar::DcMotorCar( void )
 	_mutex = xSemaphoreCreateMutex();
 	xSemaphoreGive( _mutex );
 
+	_mutex_joy = xSemaphoreCreateMutex();
+	xSemaphoreGive( _mutex_joy );
+
+	_mutex_ros = xSemaphoreCreateMutex();
+	xSemaphoreGive( _mutex_ros );
+
 	_numWheel = Config.num;
 	_speedMotor = new int32_t[_numWheel];
+
+	_imuInfPubCycle = 0;
+	_imuMsg.linear_acceleration.x = 0.0;
+	_imuMsg.linear_acceleration.y = 0.0;
+	_imuMsg.linear_acceleration.z = 0.0;
+	_imuMsg.angular_velocity.x = 0.0;
+	_imuMsg.angular_velocity.y = 0.0;
+	_imuMsg.angular_velocity.z = 0.0;
+
+	_logMsg.stamp.sec = 0;
+	_logMsg.stamp.nanosec = 0;
+	_logMsg.level = rcl_interfaces__msg__Log__INFO;
+	_logMsg.name.capacity = strlen(DCMOTORCAR_NODE_NAME);
+	_logMsg.name.data = (char *)DCMOTORCAR_NODE_NAME;
+	_logMsg.name.size = strlen(_logMsg.name.data);
+	_logMsg.msg.capacity = 128;
+	_logMsg.msg.data = new char[_logMsg.msg.capacity];
+	_logMsg.msg.size = 0;
+	_logMsg.file.capacity = strlen("");
+	_logMsg.file.data = (char *)"";
+	_logMsg.file.size = strlen(_logMsg.file.data);
+	_logMsg.function.capacity = strlen("");
+	_logMsg.function.data = (char *)"";
+	_logMsg.function.size = strlen(_logMsg.function.data);
+	_logMsg.line = (uint32_t)NULL;
+
+	_joyMsg.axes.capacity = 8;
+	_joyMsg.axes.data = new float[_joyMsg.axes.capacity];
+	_joyMsg.axes.size = _joyMsg.axes.capacity;
+	_joyMsg.buttons.capacity = 13;
+	_joyMsg.buttons.data = new int32_t[_joyMsg.buttons.capacity];
+	_joyMsg.buttons.size = _joyMsg.buttons.capacity;
+
+	_twistMsg.linear.x = 0.0;
+	_twistMsg.linear.y = 0.0;
+	_twistMsg.linear.z = 0.0;
+	_twistMsg.angular.x = 0.0;
+	_twistMsg.angular.y = 0.0;
+	_twistMsg.angular.z = 0.0;
 
 	SetMotorSpeed();
 }
@@ -57,6 +112,9 @@ DcMotorCar::DcMotorCar( void )
 DcMotorCar::~DcMotorCar( void )
 {
 	SAFE_DELETE_ARRAY( _speedMotor );
+	SAFE_DELETE_ARRAY( _logMsg.msg.data );
+	SAFE_DELETE_ARRAY( _joyMsg.axes.data );
+	SAFE_DELETE_ARRAY( _joyMsg.buttons.data );
 }
 
 
@@ -84,9 +142,115 @@ void DcMotorCar::Init( void )
 	_joy.Init();
 	_JoyCtrlCycle = 0;
 
+	_rosConState = ROS_CNST_WAITING_AGENT;
+	_rosMgrCtrlCycle = 0;
+	_imuInfPubCycle = 0;
+
 	M5.Lcd.setRotation( 1 );
 	M5.Lcd.setCursor( 0, 5 );
 	M5.Lcd.println( " InitFinish." );
+}
+
+
+/**
+ * @brief       Rosイニシャライズ
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::RosInit( void )
+{
+	NvmConfig nvm;
+
+	set_microros_wifi_transports(
+		(char *)nvm.ssid.c_str(), (char *)nvm.pass.c_str(),
+		(char *)nvm.rosAgentIp.c_str(), atoi((char *)nvm.rosAgentPort.c_str()) );
+
+	_rosConState = ROS_CNST_WAITING_AGENT;
+	_rosMgrCtrlCycle = (uint32_t)millis();
+}
+
+
+/**
+ * @brief       Rosエンティティ生成
+ * @note        なし
+ * @param       なし
+ * @retval      true 正常終了
+ * @retval      false 異常終了
+ */
+boolean DcMotorCar::RosCreateEntities( void )
+{
+	_imuInfPubCycle = (uint32_t)millis();
+
+	_allocator = rcl_get_default_allocator();
+	rclc_support_init( &_support, 0, NULL, &_allocator );
+
+	rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
+
+	rclc_publisher_init_best_effort(
+		&_pubLog,
+		&_node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT( rcl_interfaces, msg, Log ),
+		"rosout" );
+
+	rclc_publisher_init_best_effort(
+		&_pubImu,
+		&_node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Imu ),
+		"roverc_imu" );
+
+	rclc_subscription_init_default(
+		&_subJoy,
+		&_node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Joy ),
+		"joy" );
+
+	rclc_subscription_init_default(
+		&_subTwist,
+		&_node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT( geometry_msgs, msg, Twist ),
+		"cmd_vel" );
+
+	rclc_executor_init( &_executor, &_support.context, 1, &_allocator );
+
+	rclc_executor_add_subscription_with_context(
+		&_executor,
+		&_subJoy,
+		&_joyMsg,
+		&DcMotorCar::SubscribeJoyCbkWrap, this,
+		ON_NEW_DATA );
+
+	rclc_executor_add_subscription_with_context(
+		&_executor,
+		&_subTwist,
+		&_twistMsg,
+		&DcMotorCar::SubscribeTwistCbkWrap, this,
+		ON_NEW_DATA );
+	
+	return true;
+}
+
+
+/**
+ * @brief       Rosエンティティ破棄
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::RosDestroyEntities( void )
+{
+	rmw_context_t *rmw_context;
+
+	rmw_context = rcl_context_get_rmw_context( &_support.context );
+	(void)rmw_uros_set_context_entity_destroy_session_timeout( rmw_context, 0 );
+
+	rcl_publisher_fini( &_pubLog, &_node );
+	rcl_publisher_fini( &_pubImu, &_node );
+	rcl_subscription_fini( &_subJoy, &_node );
+	rcl_subscription_fini( &_subTwist, &_node );
+	rclc_executor_fini( &_executor );
+	rcl_node_fini( &_node );
+	rclc_support_fini( &_support );
 }
 
 
@@ -98,6 +262,7 @@ void DcMotorCar::Init( void )
  */
 void DcMotorCar::MainLoop( void )
 {
+	boolean isStop;
 #ifdef _SERIAL_DEBUG_
 	SerialDebug();
 #endif
@@ -120,7 +285,27 @@ void DcMotorCar::MainLoop( void )
 			M5.Lcd.printf( "\n\n\n\n" );
 		}
 
-		if( !_joy.isConnectedBle )
+		if( _rosConState == ROS_CNST_AGENT_CONNECTED )
+		{
+			M5.Lcd.println( " micro-ROS Agent Connected." );
+		}
+		else
+		{
+			M5.Lcd.println( " micro-ROS Agent Not Connected." );
+		}
+
+		isStop = true;
+
+		if( _joy.isConnectedBle )
+		{
+			isStop = false;
+		}
+		if( _rosConState == ROS_CNST_AGENT_CONNECTED )
+		{
+			isStop = false;
+		}
+
+		if( isStop )
 		{
 			xSemaphoreTake( _mutex , portMAX_DELAY );
 			_flWheel.StopWheel();
@@ -175,13 +360,15 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 	{
 		_JoyCtrlCycle = getTime + DCMOTORCAR_JOYCTRL_CYCLE;
 
+		xSemaphoreTake( _mutex_joy , portMAX_DELAY );
 		beforeMaxValue = _reqMaxValue;
 		_joy.UpdateJoyStickInfoBle( &PS4.data );
 		if( _joy.isConnectedBle )
 		{
-			JoyControl();
+			JoyControl( JOYSTKCONTYPE_BLE );
 		}
 		reqMaxValue = _reqMaxValue;
+		xSemaphoreGive( _mutex_joy );
 
 		if( _joy.isBeforeConnectedBle != _joy.isConnectedBle ){
 			isUpdate = true;
@@ -199,6 +386,243 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 			_isLcdUpdate = isUpdate;
 		}
 	}
+}
+
+
+/**
+ * @brief       ROSコントロール周期
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::RosCtrlCycle( void )
+{
+	xSemaphoreTake( _mutex_ros , portMAX_DELAY );
+	if( _rosConState == ROS_CNST_AGENT_CONNECTED  )
+	{
+		PublishImuInfo();
+		rclc_executor_spin_some( &_executor, RCL_MS_TO_NS(10) );
+	}
+	xSemaphoreGive( _mutex_ros );
+}
+
+
+/**
+ * @brief       ROS管理コントール周期
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::RosMgrCtrlCycle( void )
+{
+	uint32_t getTime;
+	RosConnectionState state;
+	boolean isUpdate;
+
+	state = _rosConState;
+	isUpdate = false;
+
+	getTime = (uint32_t)millis();
+
+	if( getTime > _rosMgrCtrlCycle )
+	{
+		_rosMgrCtrlCycle = getTime + DCMOTORCAR_ROSMGRCTRL_CYCLE;
+
+		switch( state )
+		{
+			case ROS_CNST_WAITING_AGENT :
+				if( rmw_uros_ping_agent(1000, 3) == RMW_RET_OK )
+				{
+					state = ROS_CNST_AGENT_AVAILABLE;
+				}
+				break;
+			case ROS_CNST_AGENT_AVAILABLE :
+				if( RosCreateEntities() )
+				{
+					state = ROS_CNST_AGENT_CONNECTED;
+					isUpdate = true;
+				}
+				else
+				{
+					RosDestroyEntities();
+					state = ROS_CNST_WAITING_AGENT;
+				}
+				break;
+			case ROS_CNST_AGENT_CONNECTED :
+				if( rmw_uros_ping_agent(1000, 3) != RMW_RET_OK )
+				{
+					state = ROS_CNST_AGENT_DISCONNECTED;
+					isUpdate = true;
+				}
+				break;
+			case ROS_CNST_AGENT_DISCONNECTED :
+				RosDestroyEntities();
+				state = ROS_CNST_WAITING_AGENT;
+				break;
+			default :
+				// DO_NOTHING
+				break;
+		}
+		xSemaphoreTake( _mutex_ros , portMAX_DELAY );
+		_rosConState = state;
+		if( isUpdate )
+		{
+			_isLcdUpdate = true;
+		}
+		xSemaphoreGive( _mutex_ros );
+	}
+}
+
+
+/**
+ * @brief       IMUセンサ情報配信
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::PublishImuInfo( void )
+{
+	uint32_t getTime;
+	float accX = 0.0;
+	float accY = 0.0;
+	float accZ = 0.0;
+	float gyroX = 0.0;
+	float gyroY = 0.0;
+	float gyroZ = 0.0;
+
+	getTime = (uint32_t)millis();
+
+	if( getTime > _imuInfPubCycle )
+	{
+		M5.IMU.getGyroData( &gyroX, &gyroY, &gyroZ );
+		M5.IMU.getAccelData( &accX, &accY, &accZ );
+
+		_imuMsg.linear_acceleration.x = accX;
+		_imuMsg.linear_acceleration.y = accY;
+		_imuMsg.linear_acceleration.z = accZ;
+		_imuMsg.angular_velocity.x = gyroX;
+		_imuMsg.angular_velocity.y = gyroY;
+		_imuMsg.angular_velocity.z = gyroZ;
+
+		rcl_publish( &_pubImu, &_imuMsg, NULL );
+
+		_imuInfPubCycle = getTime + DCMOTORCAR_IMUINF_SENDCYCLE;
+	}
+}
+
+
+/**
+ * @brief       Joy情報購読ハンドラ
+ * @note        なし
+ * @param[in]   arg : Joy情報
+ * @param[in]   obj : コールバックのthisポインタ
+ * @retval      なし
+ */
+void DcMotorCar::SubscribeJoyCbkWrap( const void *arg, void *obj )
+{
+	return reinterpret_cast<DcMotorCar*>(obj)->SubscribeJoyCbk(arg);
+}
+
+
+/**
+ * @brief       Joy情報購読
+ * @note        なし
+ * @param[in]   msgin : Joy情報
+ * @retval      なし
+ */
+void DcMotorCar::SubscribeJoyCbk( const void *msgin )
+{
+	int32_t beforeMaxValue;
+	uint32_t reqMaxValue;
+
+	xSemaphoreTake( _mutex_joy , portMAX_DELAY );
+	beforeMaxValue = _reqMaxValue;
+	_joy.UpdateJoyStickInfoRos2( (sensor_msgs__msg__Joy *)msgin );
+	JoyControl( JOYSTKCONTYPE_ROS2 );
+	reqMaxValue = _reqMaxValue;
+	xSemaphoreGive( _mutex_joy );
+
+	if( beforeMaxValue != reqMaxValue )
+	{
+		ROS_INFO( "MaxSpeed : %i" , reqMaxValue );
+	}
+}
+
+
+/**
+ * @brief       Twist情報購読ハンドラ
+ * @note        なし
+ * @param[in]   arg : Twist情報
+ * @param[in]   obj : コールバックのthisポインタ
+ * @retval      なし
+ */
+void DcMotorCar::SubscribeTwistCbkWrap( const void *arg, void *obj )
+{
+	return reinterpret_cast<DcMotorCar*>(obj)->SubscribeTwistCbk(arg);
+}
+
+
+/**
+ * @brief       Twist情報購読
+ * @note        なし
+ * @param[in]   msgin : Twist情報
+ * @retval      なし
+ */
+void DcMotorCar::SubscribeTwistCbk( const void *msgin )
+{
+	const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
+
+	float lx;
+	float ly;
+	float k;
+	float x;
+	float y;
+	float z;
+	float w1;
+	float w2;
+	float w3;
+	float w4;
+	int32_t flSpeed;
+	int32_t frSpeed;
+	int32_t rlSpeed;
+	int32_t rrSpeed;
+
+	lx = 0.0215;
+	ly = 0.0215;
+
+	x = msg->linear.x;
+	y = msg->linear.y;
+	z = msg->angular.z;
+
+	lx = lx * 15.0;                                 // tentative
+	ly = ly * 15.0;                                 // tentative
+	x = x * 50.0;                                   // tentative
+	y = y * 50.0;                                   // tentative
+	z = z * 100.0;                                  // tentative
+
+	k = lx + ly;
+
+	w1 = x - y + z * (-k);
+	w2 = x + y + z * k;  
+	w3 = x + y + z * (-k);
+	w4 = x - y + z * k; 
+
+	w1 = constrain( w1 , -100.0 , 100.0 );
+	w2 = constrain( w2 , -100.0 , 100.0 );
+	w3 = constrain( w3 , -100.0 , 100.0 );
+	w4 = constrain( w4 , -100.0 , 100.0 );
+
+	flSpeed = (int32_t)round( w1 );
+	frSpeed = (int32_t)round( w2 );
+	rlSpeed = (int32_t)round( w3 );
+	rrSpeed = (int32_t)round( w4 );
+
+	xSemaphoreTake( _mutex , portMAX_DELAY );
+	_flWheel.RollWheel( flSpeed );
+	_frWheel.RollWheel( frSpeed );
+	_rlWheel.RollWheel( rlSpeed );
+	_rrWheel.RollWheel( rrSpeed );
+	xSemaphoreGive( _mutex );
 }
 
 
@@ -225,7 +649,7 @@ void DcMotorCar::SetMotorSpeed( void )
  * @param       なし
  * @retval      なし
  */
-void DcMotorCar::JoyControl( void )
+void DcMotorCar::JoyControl( JoyStickConnectType i_type )
 {
 	JoyInfo *joyInf;
 	JoyInfo *beforeJoyInf;
@@ -240,9 +664,16 @@ void DcMotorCar::JoyControl( void )
 	int32_t lSpeed;
 	int32_t rSpeed;
 
-	joyInf = &_joy.joyInfBle;
-	beforeJoyInf = &_joy.beforeJoyInfBle;
-
+	if( i_type == JOYSTKCONTYPE_BLE )
+	{
+		joyInf = &_joy.joyInfBle;
+		beforeJoyInf = &_joy.beforeJoyInfBle;
+	}
+	else
+	{
+		joyInf = &_joy.joyInfRos2;
+		beforeJoyInf = &_joy.beforeJoyInfRos2;
+	}
 	lJoyDir = JOYSTKDIR_NONE;
 	rJoyDir = JOYSTKDIR_NONE;
 	lJoyTilt = 0.0;
@@ -272,17 +703,17 @@ void DcMotorCar::JoyControl( void )
 
 	_reqMaxValue = constrain( _reqMaxValue , -0 , 100 );
 
-	lJoyTilt = _joy.GetJoyStickTilt( joyInf->lStickH , joyInf->lStickV );
-	rJoyTilt = _joy.GetJoyStickTilt( joyInf->rStickH , joyInf->rStickV );
+	lJoyTilt = _joy.GetJoyStickTilt( i_type , joyInf->lStickH , joyInf->lStickV );
+	rJoyTilt = _joy.GetJoyStickTilt( i_type , joyInf->rStickH , joyInf->rStickV );
 
 	if( lJoyTilt >= 0.2 )
 	{
-		lJoyDir = _joy.GetJoyStickDirection( joyInf->lStickH , joyInf->lStickV );
+		lJoyDir = _joy.GetJoyStickDirection( i_type , joyInf->lStickH , joyInf->lStickV );
 	}
 
 	if( rJoyTilt >= 0.2 )
 	{
-		rJoyDir = _joy.GetJoyStickDirection( joyInf->rStickH , joyInf->rStickV );
+		rJoyDir = _joy.GetJoyStickDirection( i_type , joyInf->rStickH , joyInf->rStickV );
 	}
 
 	lSpeed = (int32_t)round( _reqMaxValue * lJoyTilt );

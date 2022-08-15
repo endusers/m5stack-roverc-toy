@@ -4,10 +4,10 @@
  * @brief       JoyStick
  * @note        なし
  * 
- * @version     1.0.0
- * @date        2021/10/15
+ * @version     1.1.0
+ * @date        2022/08/15
  * 
- * @copyright   (C) 2021 Motoyuki Endo
+ * @copyright   (C) 2021-2022 Motoyuki Endo
  */
 #include "JoyStick.h"
 
@@ -46,6 +46,21 @@ const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_BLE_TBL =
     }
 };
 
+const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_ROS2_TBL =
+{
+    {
+        { JOYSTKDIR_LEFT      ,  -30.0 ,   30.0 } ,
+        { JOYSTKDIR_UPLEFT    ,   30.0 ,   60.0 } ,
+        { JOYSTKDIR_UP        ,   60.0 ,  120.0 } ,
+        { JOYSTKDIR_UPRIGHT   ,  120.0 ,  150.0 } ,
+        { JOYSTKDIR_RIGHT     ,  150.0 ,  180.0 } ,
+        { JOYSTKDIR_DOWNLEFT  ,  -60.0 ,  -30.0 } ,
+        { JOYSTKDIR_DOWN      , -120.0 ,  -60.0 } ,
+        { JOYSTKDIR_DOWNRIGHT , -150.0 , -120.0 } ,
+        { JOYSTKDIR_RIGHT     , -180.0 , -150.0 } ,
+    }
+};
+
 
 //----------------------------------------------------------------
 //  <function>
@@ -62,6 +77,8 @@ JoyStick::JoyStick( void )
 	isBeforeConnectedBle = false;
 	memset( &joyInfBle , 0 , sizeof(joyInfBle) );
 	memset( &beforeJoyInfBle , 0 , sizeof(beforeJoyInfBle) );
+	memset( &joyInfRos2 , 0 , sizeof(joyInfRos2) );
+	memset( &beforeJoyInfRos2 , 0 , sizeof(beforeJoyInfRos2) );
 }
 
 
@@ -136,13 +153,44 @@ void JoyStick::UpdateJoyStickInfoBle( ps4_t *i_ps4 )
 
 
 /**
+ * @brief       JoyStickInfo更新
+ * @note        なし
+ * @param[in]   i_msg : joyメッセージ
+ * @retval      なし
+ */
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
+void JoyStick::UpdateJoyStickInfoRos2( sensor_msgs__msg__Joy *i_msg )
+{
+	beforeJoyInfRos2 = joyInfRos2;
+
+	joyInfRos2.lStickH        = i_msg->axes.data[0];
+	joyInfRos2.lStickV        = i_msg->axes.data[1];
+	joyInfRos2.rStickH        = i_msg->axes.data[3];
+	joyInfRos2.rStickV        = i_msg->axes.data[4];
+	joyInfRos2.l2Axes         = MAPF( -i_msg->axes.data[2], -1.0, 1.0, 0.0, 1.0 );
+	joyInfRos2.r2Axes         = MAPF( -i_msg->axes.data[5], -1.0, 1.0, 0.0, 1.0 );
+	joyInfRos2.lrAxes         = i_msg->axes.data[6];
+	joyInfRos2.updownAxes     = i_msg->axes.data[7];
+	joyInfRos2.squareButton   = i_msg->buttons.data[3];
+	joyInfRos2.crossButton    = i_msg->buttons.data[0];
+	joyInfRos2.circleButton   = i_msg->buttons.data[1];
+	joyInfRos2.triangleButton = i_msg->buttons.data[2];
+	joyInfRos2.l1Button       = i_msg->buttons.data[4];
+	joyInfRos2.r1Button       = i_msg->buttons.data[5];
+	joyInfRos2.battery         = 0;
+	joyInfRos2.charging        = 0;
+}
+#endif
+
+
+/**
  * @brief       JoyStick傾き取得
  * @note        なし
  * @param[in]   i_hStick : JoyStick水平位置
  * @param[in]   i_vStick : JoyStick垂直位置
  * @retval      JoyStick傾き量
  */
-float JoyStick::GetJoyStickTilt( float i_hStick , float i_vStick )
+float JoyStick::GetJoyStickTilt( JoyStickConnectType i_type, float i_hStick , float i_vStick )
 {
 	float tile;
 
@@ -165,7 +213,7 @@ float JoyStick::GetJoyStickTilt( float i_hStick , float i_vStick )
  * @param[in]   i_vStick : JoyStick垂直位置
  * @retval      JoyStick方向
  */
-JoyStickDirection JoyStick::GetJoyStickDirection( float i_hStick , float i_vStick )
+JoyStickDirection JoyStick::GetJoyStickDirection( JoyStickConnectType i_type, float i_hStick , float i_vStick )
 {
 	float tile;
 	float angle;
@@ -176,7 +224,7 @@ JoyStickDirection JoyStick::GetJoyStickDirection( float i_hStick , float i_vStic
 	tile = 0.0;
 	angle = 0.0;
 
-	tile = GetJoyStickTilt( i_hStick , i_vStick );
+	tile = GetJoyStickTilt( i_type , i_hStick , i_vStick );
 
 	if( tile != 0.0 )
 	{
@@ -184,7 +232,14 @@ JoyStickDirection JoyStick::GetJoyStickDirection( float i_hStick , float i_vStic
 		angle = angle * 180.0 / ( atan(1.0) * 4.0 );	// rad2deg
 	}
 
-	stickDirTbl = (JoyStickDirectionTbl *)&JOYSTICKDIRECTION_BLE_TBL;
+	if( i_type == JOYSTKCONTYPE_BLE )
+	{
+		stickDirTbl = (JoyStickDirectionTbl *)&JOYSTICKDIRECTION_BLE_TBL;
+	}
+	else
+	{
+		stickDirTbl = (JoyStickDirectionTbl *)&JOYSTICKDIRECTION_ROS2_TBL;
+	}
 
 	stickDir = JOYSTKDIR_NONE;
 	if( tile != 0.0 )

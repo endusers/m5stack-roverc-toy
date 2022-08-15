@@ -4,10 +4,10 @@
  * @brief       JoyStick
  * @note        なし
  * 
- * @version     1.0.0
- * @date        2021/10/15
+ * @version     1.1.0
+ * @date        2022/08/15
  * 
- * @copyright   (C) 2021 Motoyuki Endo
+ * @copyright   (C) 2021-2022 Motoyuki Endo
  */
 #ifndef __JOYSTICK_H
 #define __JOYSTICK_H
@@ -16,6 +16,9 @@
 #include <Arduino.h>
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 #include <PS4Controller.h>
+#endif
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
+#include <sensor_msgs/msg/joy.h>
 #endif
 
 
@@ -28,6 +31,13 @@
 //----------------------------------------------------------------
 //  <enum>
 //----------------------------------------------------------------
+enum JoyStickConnectType_Tag
+{
+	JOYSTKCONTYPE_BLE				= 0	,
+	JOYSTKCONTYPE_ROS2					,
+};
+typedef enum JoyStickConnectType_Tag			JoyStickConnectType;
+
 enum JoyStickDirection_Tag
 {
 	JOYSTKDIR_NONE					= 0	,
@@ -95,22 +105,28 @@ class JoyStick
 {
 private:
 	static const JoyStickDirectionTbl JOYSTICKDIRECTION_BLE_TBL;
+	static const JoyStickDirectionTbl JOYSTICKDIRECTION_ROS2_TBL;
 
 public:
 	boolean isConnectedBle;
 	boolean isBeforeConnectedBle;
 	JoyInfo joyInfBle;
 	JoyInfo beforeJoyInfBle;
+	JoyInfo joyInfRos2;
+	JoyInfo beforeJoyInfRos2;
 
-	JoyStick( void );                                                           // コンストラクタ
-	~JoyStick( void );                                                          // デストラクタ
+	JoyStick( void );                                                                                       // コンストラクタ
+	~JoyStick( void );                                                                                      // デストラクタ
 
-	void Init( void );                                                          // イニシャライズ
+	void Init( void );                                                                                      // イニシャライズ
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-	void UpdateJoyStickInfoBle( ps4_t *i_ps4 );                                 // JoyStickInfo更新
+	void UpdateJoyStickInfoBle( ps4_t *i_ps4 );                                                             // JoyStickInfo更新
 #endif
-	float GetJoyStickTilt( float i_hStick , float i_vStick );                   // JoyStick傾き取得
-	JoyStickDirection GetJoyStickDirection( float i_hStick , float i_vStick );  // JoyStick方向取得
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
+	void UpdateJoyStickInfoRos2( sensor_msgs__msg__Joy *i_msg );                                            // JoyStickInfo更新
+#endif
+	float GetJoyStickTilt( JoyStickConnectType i_typ,  float i_hStick , float i_vStick );                   // JoyStick傾き取得
+	JoyStickDirection GetJoyStickDirection( JoyStickConnectType i_type, float i_hStick , float i_vStick );  // JoyStick方向取得
 };
 
 #endif
