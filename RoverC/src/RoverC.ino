@@ -4,10 +4,10 @@
  * @brief       メイン
  * @note        なし
  * 
- * @version     1.0.0
- * @date        2021/10/15
+ * @version     1.1.0
+ * @date        2022/08/15
  * 
- * @copyright   (C) 2021 Motoyuki Endo
+ * @copyright   (C) 2021-2022 Motoyuki Endo
  */
 #include "DcMotorCar.h"
 
@@ -48,6 +48,8 @@
 extern void IRAM_ATTR ControlCycle();
 extern void ControlTask( void * pvParameters );
 extern void BleCtrlTask( void * pvParameters );
+extern void RosTask( void * pvParameters );
+extern void RosMgrTask( void * pvParameters );
 
 
 //----------------------------------------------------------------
@@ -61,6 +63,8 @@ extern void BleCtrlTask( void * pvParameters );
 hw_timer_t *timer = NULL;
 TaskHandle_t xCtrlTask;
 TaskHandle_t xBleCtrlTask;
+TaskHandle_t xRosTask;
+TaskHandle_t xRosMgrTask;
 EventGroupHandle_t xEventGroup;
 DcMotorCar car;
 
@@ -99,6 +103,26 @@ void setup() {
 		NULL,
 		4,
 		&xBleCtrlTask,
+		APP_CPU_NUM
+	);
+
+	xTaskCreateUniversal(
+		RosTask,
+		"RosTask",
+		8192,
+		NULL,
+		3,
+		&xRosTask,
+		APP_CPU_NUM
+	);
+
+	xTaskCreateUniversal(
+		RosMgrTask,
+		"RosMgrTask",
+		8192,
+		NULL,
+		2,
+		&xRosMgrTask,
 		APP_CPU_NUM
 	);
 
@@ -173,6 +197,39 @@ void BleCtrlTask( void * pvParameters )
 	for(;;)
 	{
 		car.BleJoyCtrlCycle();
+		vTaskDelay(1);
+	}
+}
+
+
+/**
+ * @brief      ROSタスク
+ * @note       なし
+ * @param      なし
+ * @retval     なし
+ */
+void RosTask( void * pvParameters )
+{
+	for(;;)
+	{
+		car.RosCtrlCycle();
+		vTaskDelay(1);
+	}
+}
+
+
+/**
+ * @brief      ROS管理タスク
+ * @note       なし
+ * @param      なし
+ * @retval     なし
+ */
+void RosMgrTask( void * pvParameters )
+{
+	car.RosInit();
+	for(;;)
+	{
+		car.RosMgrCtrlCycle();
 		vTaskDelay(1);
 	}
 }
