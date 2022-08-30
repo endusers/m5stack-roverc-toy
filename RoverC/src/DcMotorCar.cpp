@@ -251,7 +251,9 @@ void DcMotorCar::RosDestroyEntities( void )
 
 	rcl_publisher_fini( &_pubLog, &_node );
 	rcl_publisher_fini( &_pubImu, &_node );
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	rcl_subscription_fini( &_subJoy, &_node );
+#endif
 	rcl_subscription_fini( &_subTwist, &_node );
 	rclc_executor_fini( &_executor );
 	rcl_node_fini( &_node );
