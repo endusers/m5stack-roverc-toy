@@ -143,6 +143,7 @@ void DcMotorCar::Init( void )
 	_JoyCtrlCycle = 0;
 
 	_rosConState = ROS_CNST_WAITING_AGENT;
+	_rosAgentPingCnt = 0;
 	_rosMgrCtrlCycle = 0;
 	_imuInfPubCycle = 0;
 
@@ -199,11 +200,13 @@ boolean DcMotorCar::RosCreateEntities( void )
 		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Imu ),
 		"roverc_imu" );
 
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	rclc_subscription_init_default(
 		&_subJoy,
 		&_node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Joy ),
 		"joy" );
+#endif
 
 	rclc_subscription_init_default(
 		&_subTwist,
@@ -213,12 +216,14 @@ boolean DcMotorCar::RosCreateEntities( void )
 
 	rclc_executor_init( &_executor, &_support.context, 1, &_allocator );
 
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	rclc_executor_add_subscription_with_context(
 		&_executor,
 		&_subJoy,
 		&_joyMsg,
 		&DcMotorCar::SubscribeJoyCbkWrap, this,
 		ON_NEW_DATA );
+#endif
 
 	rclc_executor_add_subscription_with_context(
 		&_executor,
@@ -343,6 +348,7 @@ void DcMotorCar::MainCycle( void )
  * @param       なし
  * @retval      なし
  */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 void DcMotorCar::BleJoyCtrlCycle( void )
 {
 	boolean isUpdate;
@@ -387,6 +393,7 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 		}
 	}
 }
+#endif
 
 
 /**
@@ -416,11 +423,6 @@ void DcMotorCar::RosCtrlCycle( void )
 void DcMotorCar::RosMgrCtrlCycle( void )
 {
 	uint32_t getTime;
-	RosConnectionState state;
-	boolean isUpdate;
-
-	state = _rosConState;
-	isUpdate = false;
 
 	getTime = (uint32_t)millis();
 
@@ -428,48 +430,52 @@ void DcMotorCar::RosMgrCtrlCycle( void )
 	{
 		_rosMgrCtrlCycle = getTime + DCMOTORCAR_ROSMGRCTRL_CYCLE;
 
-		switch( state )
+		switch( _rosConState )
 		{
 			case ROS_CNST_WAITING_AGENT :
-				if( rmw_uros_ping_agent(1000, 3) == RMW_RET_OK )
+				if( rmw_uros_ping_agent(ROS_AGENT_PING_TIMEOUT, ROS_AGENT_PING_RETRY_CNTMAX) == RMW_RET_OK )
 				{
-					state = ROS_CNST_AGENT_AVAILABLE;
+					_rosAgentPingCnt = 0;
+					_rosConState = ROS_CNST_AGENT_AVAILABLE;
 				}
 				break;
 			case ROS_CNST_AGENT_AVAILABLE :
 				if( RosCreateEntities() )
 				{
-					state = ROS_CNST_AGENT_CONNECTED;
-					isUpdate = true;
+					_rosConState = ROS_CNST_AGENT_CONNECTED;
+					_isLcdUpdate = true;
 				}
 				else
 				{
 					RosDestroyEntities();
-					state = ROS_CNST_WAITING_AGENT;
+					_rosConState = ROS_CNST_WAITING_AGENT;
 				}
 				break;
 			case ROS_CNST_AGENT_CONNECTED :
-				if( rmw_uros_ping_agent(1000, 3) != RMW_RET_OK )
+				xSemaphoreTake( _mutex_ros , portMAX_DELAY );
+				if( rmw_uros_ping_agent(ROS_AGENT_PING_TIMEOUT, 1) != RMW_RET_OK )
 				{
-					state = ROS_CNST_AGENT_DISCONNECTED;
-					isUpdate = true;
+					_rosAgentPingCnt++;
+					if( _rosAgentPingCnt >= ROS_AGENT_PING_RETRY_CNTMAX )
+					{
+						_rosConState = ROS_CNST_AGENT_DISCONNECTED;
+						_isLcdUpdate = true;
+					}
 				}
+				else
+				{
+					_rosAgentPingCnt = 0;
+				}
+				xSemaphoreGive( _mutex_ros );
 				break;
 			case ROS_CNST_AGENT_DISCONNECTED :
 				RosDestroyEntities();
-				state = ROS_CNST_WAITING_AGENT;
+				_rosConState = ROS_CNST_WAITING_AGENT;
 				break;
 			default :
 				// DO_NOTHING
 				break;
 		}
-		xSemaphoreTake( _mutex_ros , portMAX_DELAY );
-		_rosConState = state;
-		if( isUpdate )
-		{
-			_isLcdUpdate = true;
-		}
-		xSemaphoreGive( _mutex_ros );
 	}
 }
 
@@ -518,10 +524,12 @@ void DcMotorCar::PublishImuInfo( void )
  * @param[in]   obj : コールバックのthisポインタ
  * @retval      なし
  */
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 void DcMotorCar::SubscribeJoyCbkWrap( const void *arg, void *obj )
 {
 	return reinterpret_cast<DcMotorCar*>(obj)->SubscribeJoyCbk(arg);
 }
+#endif
 
 
 /**
@@ -530,6 +538,7 @@ void DcMotorCar::SubscribeJoyCbkWrap( const void *arg, void *obj )
  * @param[in]   msgin : Joy情報
  * @retval      なし
  */
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 void DcMotorCar::SubscribeJoyCbk( const void *msgin )
 {
 	int32_t beforeMaxValue;
@@ -547,6 +556,7 @@ void DcMotorCar::SubscribeJoyCbk( const void *msgin )
 		ROS_INFO( "MaxSpeed : %i" , reqMaxValue );
 	}
 }
+#endif
 
 
 /**
