@@ -42,6 +42,9 @@
 
 #define DCMOTORCAR_NODE_NAME					"micro_ros_roverc_node"
 
+#define ROS_AGENT_PING_TIMEOUT					(50)							// 50ms
+#define ROS_AGENT_PING_RETRY_CNTMAX				(10)							// 10count
+
 
 //----------------------------------------------------------------
 //  <enum>
@@ -105,6 +108,7 @@ private:
 	geometry_msgs__msg__Twist _twistMsg;
 
 	RosConnectionState _rosConState;
+	uint32_t _rosAgentPingCnt;
 	uint32_t _rosMgrCtrlCycle;
 	uint32_t _imuInfPubCycle;
 
