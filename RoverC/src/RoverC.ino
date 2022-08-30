@@ -96,6 +96,7 @@ void setup() {
 		APP_CPU_NUM
 	);
 
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 	xTaskCreateUniversal(
 		BleCtrlTask,
 		"BleCtrlTask",
@@ -105,6 +106,7 @@ void setup() {
 		&xBleCtrlTask,
 		APP_CPU_NUM
 	);
+#endif
 
 	xTaskCreateUniversal(
 		RosTask,
@@ -192,6 +194,7 @@ void ControlTask( void * pvParameters )
  * @param      なし
  * @retval     なし
  */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 void BleCtrlTask( void * pvParameters )
 {
 	for(;;)
@@ -200,6 +203,7 @@ void BleCtrlTask( void * pvParameters )
 		vTaskDelay(1);
 	}
 }
+#endif
 
 
 /**

@@ -200,11 +200,13 @@ boolean DcMotorCar::RosCreateEntities( void )
 		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Imu ),
 		"roverc_imu" );
 
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	rclc_subscription_init_default(
 		&_subJoy,
 		&_node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Joy ),
 		"joy" );
+#endif
 
 	rclc_subscription_init_default(
 		&_subTwist,
@@ -214,12 +216,14 @@ boolean DcMotorCar::RosCreateEntities( void )
 
 	rclc_executor_init( &_executor, &_support.context, 1, &_allocator );
 
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	rclc_executor_add_subscription_with_context(
 		&_executor,
 		&_subJoy,
 		&_joyMsg,
 		&DcMotorCar::SubscribeJoyCbkWrap, this,
 		ON_NEW_DATA );
+#endif
 
 	rclc_executor_add_subscription_with_context(
 		&_executor,
@@ -344,6 +348,7 @@ void DcMotorCar::MainCycle( void )
  * @param       なし
  * @retval      なし
  */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 void DcMotorCar::BleJoyCtrlCycle( void )
 {
 	boolean isUpdate;
@@ -388,6 +393,7 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 		}
 	}
 }
+#endif
 
 
 /**
@@ -518,10 +524,12 @@ void DcMotorCar::PublishImuInfo( void )
  * @param[in]   obj : コールバックのthisポインタ
  * @retval      なし
  */
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 void DcMotorCar::SubscribeJoyCbkWrap( const void *arg, void *obj )
 {
 	return reinterpret_cast<DcMotorCar*>(obj)->SubscribeJoyCbk(arg);
 }
+#endif
 
 
 /**
@@ -530,6 +538,7 @@ void DcMotorCar::SubscribeJoyCbkWrap( const void *arg, void *obj )
  * @param[in]   msgin : Joy情報
  * @retval      なし
  */
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 void DcMotorCar::SubscribeJoyCbk( const void *msgin )
 {
 	int32_t beforeMaxValue;
@@ -547,6 +556,7 @@ void DcMotorCar::SubscribeJoyCbk( const void *msgin )
 		ROS_INFO( "MaxSpeed : %i" , reqMaxValue );
 	}
 }
+#endif
 
 
 /**

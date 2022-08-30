@@ -113,8 +113,10 @@ private:
 	uint32_t _imuInfPubCycle;
 
 	void PublishImuInfo( void );                                        // IMUセンサ情報配信
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	static void SubscribeJoyCbkWrap( const void *arg, void *obj );      // Joy情報購読ハンドラ
 	void SubscribeJoyCbk( const void *msgin );                          // Joy情報購読
+#endif
 	static void SubscribeTwistCbkWrap( const void *arg, void *obj );    // Twist情報購読ハンドラ
 	void SubscribeTwistCbk( const void *msgin );                        // Twist情報購読
 	void SetMotorSpeed( void );                                         // モーター速度設定
@@ -133,7 +135,9 @@ public:
 	void RosDestroyEntities( void );                                    // Rosエンティティ破棄
 	void MainLoop( void );                                              // メインループ
 	void MainCycle( void );                                             // 制御周期ハンドラ
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 	void BleJoyCtrlCycle( void );                                       // BleJoyStickコントロール周期
+#endif
 	void RosCtrlCycle( void );                                          // ROSコントロール周期
 	void RosMgrCtrlCycle( void );                                       // ROS管理コントロール周期
 };
