@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/09
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -47,7 +47,7 @@
 //----------------------------------------------------------------
 extern void IRAM_ATTR ControlCycle();
 extern void ControlTask( void * pvParameters );
-extern void BleCtrlTask( void * pvParameters );
+extern void BtCtrlTask( void * pvParameters );
 extern void RosTask( void * pvParameters );
 extern void RosMgrTask( void * pvParameters );
 
@@ -62,7 +62,7 @@ extern void RosMgrTask( void * pvParameters );
 //----------------------------------------------------------------
 hw_timer_t *timer = NULL;
 TaskHandle_t xCtrlTask;
-TaskHandle_t xBleCtrlTask;
+TaskHandle_t xBtCtrlTask;
 TaskHandle_t xRosTask;
 TaskHandle_t xRosMgrTask;
 EventGroupHandle_t xEventGroup;
@@ -98,12 +98,12 @@ void setup() {
 
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 	xTaskCreateUniversal(
-		BleCtrlTask,
-		"BleCtrlTask",
+		BtCtrlTask,
+		"BtCtrlTask",
 		8192,
 		NULL,
 		4,
-		&xBleCtrlTask,
+		&xBtCtrlTask,
 		APP_CPU_NUM
 	);
 #endif
@@ -189,17 +189,17 @@ void ControlTask( void * pvParameters )
 
 
 /**
- * @brief      BleCtrlタスク
+ * @brief      BtCtrlタスク
  * @note       なし
  * @param      なし
  * @retval     なし
  */
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-void BleCtrlTask( void * pvParameters )
+void BtCtrlTask( void * pvParameters )
 {
 	for(;;)
 	{
-		car.BleJoyCtrlCycle();
+		car.BtJoyCtrlCycle();
 		vTaskDelay(1);
 	}
 }

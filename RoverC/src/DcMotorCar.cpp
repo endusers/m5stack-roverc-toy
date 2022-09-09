@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/09
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -279,10 +279,10 @@ void DcMotorCar::MainLoop( void )
 		M5.Lcd.fillScreen( BLACK );
 		M5.Lcd.setCursor( 0, 5 );
 
-		if( _joy.isConnectedBle )
+		if( _joy.isConnectedBt )
 		{
 			M5.Lcd.println( " PS4 Controller Connected." );
-			M5.Lcd.printf( " Battery Level : %d\n", _joy.joyInfBle.battery );
+			M5.Lcd.printf( " Battery Level : %d\n", _joy.joyInfBt.battery );
 			M5.Lcd.printf( " MaxSpeed : %d\n", _reqMaxValue );
 			M5.Lcd.printf( "\n\n" );
 		}
@@ -303,7 +303,7 @@ void DcMotorCar::MainLoop( void )
 
 		isStop = true;
 
-		if( _joy.isConnectedBle )
+		if( _joy.isConnectedBt )
 		{
 			isStop = false;
 		}
@@ -345,13 +345,13 @@ void DcMotorCar::MainCycle( void )
 
 
 /**
- * @brief       BleJoyStickコントロール周期
+ * @brief       JoyStickコントロール周期
  * @note        なし
  * @param       なし
  * @retval      なし
  */
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-void DcMotorCar::BleJoyCtrlCycle( void )
+void DcMotorCar::BtJoyCtrlCycle( void )
 {
 	boolean isUpdate;
 	int32_t beforeMaxValue;
@@ -370,18 +370,18 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 
 		xSemaphoreTake( _mutex_joy , portMAX_DELAY );
 		beforeMaxValue = _reqMaxValue;
-		_joy.UpdateJoyStickInfoBle( &PS4.data );
-		if( _joy.isConnectedBle )
+		_joy.UpdateJoyStickInfoBt( &PS4.data );
+		if( _joy.isConnectedBt )
 		{
-			JoyControl( JOYSTKCONTYPE_BLE );
+			JoyControl( JOYSTKCONTYPE_BT );
 		}
 		reqMaxValue = _reqMaxValue;
 		xSemaphoreGive( _mutex_joy );
 
-		if( _joy.isBeforeConnectedBle != _joy.isConnectedBle ){
+		if( _joy.isBeforeConnectedBt != _joy.isConnectedBt ){
 			isUpdate = true;
 		}
-		if( _joy.beforeJoyInfBle.battery != _joy.joyInfBle.battery ){
+		if( _joy.beforeJoyInfBt.battery != _joy.joyInfBt.battery ){
 			isUpdate = true;
 		}
 		if( beforeMaxValue != reqMaxValue )
@@ -676,10 +676,10 @@ void DcMotorCar::JoyControl( JoyStickConnectType i_type )
 	int32_t lSpeed;
 	int32_t rSpeed;
 
-	if( i_type == JOYSTKCONTYPE_BLE )
+	if( i_type == JOYSTKCONTYPE_BT )
 	{
-		joyInf = &_joy.joyInfBle;
-		beforeJoyInf = &_joy.beforeJoyInfBle;
+		joyInf = &_joy.joyInfBt;
+		beforeJoyInf = &_joy.beforeJoyInfBt;
 	}
 	else
 	{

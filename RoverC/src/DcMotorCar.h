@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/09
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -136,7 +136,7 @@ public:
 	void MainLoop( void );                                              // メインループ
 	void MainCycle( void );                                             // 制御周期ハンドラ
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-	void BleJoyCtrlCycle( void );                                       // BleJoyStickコントロール周期
+	void BtJoyCtrlCycle( void );                                        // JoyStickコントロール周期
 #endif
 	void RosCtrlCycle( void );                                          // ROSコントロール周期
 	void RosMgrCtrlCycle( void );                                       // ROS管理コントロール周期

@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/09
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -31,7 +31,7 @@
 //----------------------------------------------------------------
 //  <constant>
 //----------------------------------------------------------------
-const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_BLE_TBL =
+const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_BT_TBL =
 {
     {
         { JOYSTKDIR_RIGHT     ,  -30.0 ,   30.0 } ,
@@ -73,10 +73,10 @@ const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_ROS2_TBL =
  */
 JoyStick::JoyStick( void )
 {
-	isConnectedBle = false;
-	isBeforeConnectedBle = false;
-	memset( &joyInfBle , 0 , sizeof(joyInfBle) );
-	memset( &beforeJoyInfBle , 0 , sizeof(beforeJoyInfBle) );
+	isConnectedBt = false;
+	isBeforeConnectedBt = false;
+	memset( &joyInfBt , 0 , sizeof(joyInfBt) );
+	memset( &beforeJoyInfBt , 0 , sizeof(beforeJoyInfBt) );
 	memset( &joyInfRos2 , 0 , sizeof(joyInfRos2) );
 	memset( &beforeJoyInfRos2 , 0 , sizeof(beforeJoyInfRos2) );
 }
@@ -104,14 +104,14 @@ void JoyStick::Init( void )
 {
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 	// uint8_t derived_mac_addr[6];
-	// char ble_mac_addr[17 + 1];
+	// char bt_mac_addr[17 + 1];
 
 	// esp_read_mac( derived_mac_addr, ESP_MAC_BT );
-	// snprintf( ble_mac_addr, sizeof(ble_mac_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
+	// snprintf( bt_mac_addr, sizeof(bt_mac_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
 	// 	derived_mac_addr[0], derived_mac_addr[1], derived_mac_addr[2],
 	// 	derived_mac_addr[3], derived_mac_addr[4], derived_mac_addr[5] );
 
-	// PS4.begin( ble_mac_addr );
+	// PS4.begin( bt_mac_addr );
 
 	PS4.begin( BLUETOOTH_MAC_ADDRESS );
 #endif
@@ -125,29 +125,29 @@ void JoyStick::Init( void )
  * @retval      なし
  */
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-void JoyStick::UpdateJoyStickInfoBle( ps4_t *i_ps4 )
+void JoyStick::UpdateJoyStickInfoBt( ps4_t *i_ps4 )
 {
-	beforeJoyInfBle = joyInfBle;
+	beforeJoyInfBt = joyInfBt;
 
-	joyInfBle.lStickH        = MAPF( i_ps4->analog.stick.lx, -128.0, 127.0, -1.0, 1.0 );
-	joyInfBle.lStickV        = MAPF( i_ps4->analog.stick.ly, -128.0, 127.0, -1.0, 1.0 );
-	joyInfBle.rStickH        = MAPF( i_ps4->analog.stick.rx, -128.0, 127.0, -1.0, 1.0 );
-	joyInfBle.rStickV        = MAPF( i_ps4->analog.stick.ry, -128.0, 127.0, -1.0, 1.0 );
-	joyInfBle.l2Axes         = MAPF( i_ps4->analog.button.l2, 0.0, 255.0, 0.0, 1.0 );
-	joyInfBle.r2Axes         = MAPF( i_ps4->analog.button.r2, 0.0, 255.0, 0.0, 1.0 );
-	joyInfBle.lrAxes         = (i_ps4->button.left) + (-i_ps4->button.right);
-	joyInfBle.updownAxes     = (i_ps4->button.up) + (-i_ps4->button.down);
-	joyInfBle.squareButton   = i_ps4->button.square;
-	joyInfBle.crossButton    = i_ps4->button.cross;
-	joyInfBle.circleButton   = i_ps4->button.circle;
-	joyInfBle.triangleButton = i_ps4->button.triangle;
-	joyInfBle.l1Button       = i_ps4->button.l1;
-	joyInfBle.r1Button       = i_ps4->button.r1;
-	joyInfBle.battery        = i_ps4->status.battery;
-	joyInfBle.charging       = i_ps4->status.charging;
+	joyInfBt.lStickH        = MAPF( i_ps4->analog.stick.lx, -128.0, 127.0, -1.0, 1.0 );
+	joyInfBt.lStickV        = MAPF( i_ps4->analog.stick.ly, -128.0, 127.0, -1.0, 1.0 );
+	joyInfBt.rStickH        = MAPF( i_ps4->analog.stick.rx, -128.0, 127.0, -1.0, 1.0 );
+	joyInfBt.rStickV        = MAPF( i_ps4->analog.stick.ry, -128.0, 127.0, -1.0, 1.0 );
+	joyInfBt.l2Axes         = MAPF( i_ps4->analog.button.l2, 0.0, 255.0, 0.0, 1.0 );
+	joyInfBt.r2Axes         = MAPF( i_ps4->analog.button.r2, 0.0, 255.0, 0.0, 1.0 );
+	joyInfBt.lrAxes         = (i_ps4->button.left) + (-i_ps4->button.right);
+	joyInfBt.updownAxes     = (i_ps4->button.up) + (-i_ps4->button.down);
+	joyInfBt.squareButton   = i_ps4->button.square;
+	joyInfBt.crossButton    = i_ps4->button.cross;
+	joyInfBt.circleButton   = i_ps4->button.circle;
+	joyInfBt.triangleButton = i_ps4->button.triangle;
+	joyInfBt.l1Button       = i_ps4->button.l1;
+	joyInfBt.r1Button       = i_ps4->button.r1;
+	joyInfBt.battery        = i_ps4->status.battery;
+	joyInfBt.charging       = i_ps4->status.charging;
 
-	isBeforeConnectedBle = isConnectedBle;
-	isConnectedBle = PS4.isConnected();
+	isBeforeConnectedBt = isConnectedBt;
+	isConnectedBt = PS4.isConnected();
 }
 #endif
 
@@ -232,9 +232,9 @@ JoyStickDirection JoyStick::GetJoyStickDirection( JoyStickConnectType i_type, fl
 		angle = angle * 180.0 / ( atan(1.0) * 4.0 );	// rad2deg
 	}
 
-	if( i_type == JOYSTKCONTYPE_BLE )
+	if( i_type == JOYSTKCONTYPE_BT )
 	{
-		stickDirTbl = (JoyStickDirectionTbl *)&JOYSTICKDIRECTION_BLE_TBL;
+		stickDirTbl = (JoyStickDirectionTbl *)&JOYSTICKDIRECTION_BT_TBL;
 	}
 	else
 	{
