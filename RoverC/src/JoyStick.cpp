@@ -110,6 +110,7 @@ void JoyStick::Init( void )
 	// snprintf( bt_mac_addr, sizeof(bt_mac_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
 	// 	derived_mac_addr[0], derived_mac_addr[1], derived_mac_addr[2],
 	// 	derived_mac_addr[3], derived_mac_addr[4], derived_mac_addr[5] );
+	// Serial.println( bt_mac_addr );
 
 	// PS4.begin( bt_mac_addr );
 
