@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/10
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -24,15 +24,17 @@
 #define OFF                         (0)
 #define ON                          (1)
 
+#define RCLRETUNUSED(ret) (void)(ret)
+#define RCLRETCHECK(ret) if( ret != RCL_RET_OK ){ return false; }
+
 #define ROS_INFO(...)                                                            \
 do{                                                                              \
+    rcl_ret_t ret;                                                               \
     snprintf( _logMsg.msg.data, _logMsg.msg.capacity, __VA_ARGS__ );             \
     _logMsg.msg.size = strlen(_logMsg.msg.data);                                 \
-    rcl_publish( &_pubLog, &_logMsg, NULL );                                     \
+    ret = rcl_publish( &_pubLog, &_logMsg, NULL );                               \
+    RCLRETUNUSED( ret );                                                         \
 }while(0)                                                                        \
-
-// TODO : #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
-// TODO : #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 
 
 //----------------------------------------------------------------
@@ -128,6 +130,12 @@ void DcMotorCar::Init( void )
 {
 #ifdef _SERIAL_DEBUG_
 	Serial.begin( 115200 );
+	_ctrlCycleTime = (uint32_t)millis();
+	_btCycleTime = (uint32_t)millis();
+	_rosCycleTime = (uint32_t)millis();
+	_ctrlCycleCnt = 0;
+	_btCycleCnt = 0;
+	_rosCycleCnt = 0;
 #endif
 
 	M5.begin();
@@ -142,14 +150,30 @@ void DcMotorCar::Init( void )
 	_joy.Init();
 	_JoyCtrlCycle = 0;
 
-	_rosConState = ROS_CNST_WAITING_AGENT;
+	_wifiRetryTime = (uint32_t)millis();
+
+	_rosConState = ROS_CNST_WIFI_DISCONNECTED;
 	_rosAgentPingCnt = 0;
-	_rosMgrCtrlCycle = 0;
-	_imuInfPubCycle = 0;
+	_rosMgrCtrlCycle = (uint32_t)millis();
+	_imuInfPubCycle = (uint32_t)millis();
 
 	M5.Lcd.setRotation( 1 );
 	M5.Lcd.setCursor( 0, 5 );
 	M5.Lcd.println( " InitFinish." );
+}
+
+
+/**
+ * @brief       WiFiイニシャライズ
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::WiFiInit( void )
+{
+	NvmConfig nvm;
+
+	WiFi.begin( (char *)nvm.ssid.c_str(), (char *)nvm.pass.c_str() );
 }
 
 
@@ -161,14 +185,24 @@ void DcMotorCar::Init( void )
  */
 void DcMotorCar::RosInit( void )
 {
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 	NvmConfig nvm;
 
-	set_microros_wifi_transports(
-		(char *)nvm.ssid.c_str(), (char *)nvm.pass.c_str(),
-		(char *)nvm.rosAgentIp.c_str(), atoi((char *)nvm.rosAgentPort.c_str()) );
+	_locator.address.fromString( (char *)nvm.rosAgentIp.c_str() );
+	_locator.port = atoi((char *)nvm.rosAgentPort.c_str());
 
-	_rosConState = ROS_CNST_WAITING_AGENT;
-	_rosMgrCtrlCycle = (uint32_t)millis();
+	rmw_uros_set_custom_transport(
+		false,
+		(void *) &_locator,
+		arduino_wifi_transport_open,
+		arduino_wifi_transport_close,
+		arduino_wifi_transport_write,
+		arduino_wifi_transport_read
+	);
+#endif
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_SERIAL
+	set_microros_transports();
+#endif
 }
 
 
@@ -181,57 +215,68 @@ void DcMotorCar::RosInit( void )
  */
 boolean DcMotorCar::RosCreateEntities( void )
 {
+	rcl_ret_t ret;
+
 	_imuInfPubCycle = (uint32_t)millis();
 
 	_allocator = rcl_get_default_allocator();
-	rclc_support_init( &_support, 0, NULL, &_allocator );
+	ret = rclc_support_init( &_support, 0, NULL, &_allocator );
+	RCLRETCHECK( ret );
 
-	rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
+	ret = rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
+	RCLRETCHECK( ret );
 
-	rclc_publisher_init_best_effort(
+	ret = rclc_publisher_init_best_effort(
 		&_pubLog,
 		&_node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT( rcl_interfaces, msg, Log ),
 		"rosout" );
+	RCLRETCHECK( ret );
 
-	rclc_publisher_init_best_effort(
+	ret = rclc_publisher_init_best_effort(
 		&_pubImu,
 		&_node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Imu ),
 		"roverc_imu" );
+	RCLRETCHECK( ret );
 
 #if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
-	rclc_subscription_init_default(
+	ret = rclc_subscription_init_default(
 		&_subJoy,
 		&_node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT( sensor_msgs, msg, Joy ),
 		"joy" );
+	RCLRETCHECK( ret );
 #endif
 
-	rclc_subscription_init_default(
+	ret = rclc_subscription_init_default(
 		&_subTwist,
 		&_node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT( geometry_msgs, msg, Twist ),
 		"cmd_vel" );
+	RCLRETCHECK( ret );
 
-	rclc_executor_init( &_executor, &_support.context, 1, &_allocator );
+	ret = rclc_executor_init( &_executor, &_support.context, 2, &_allocator );
+	RCLRETCHECK( ret );
 
 #if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
-	rclc_executor_add_subscription_with_context(
+	ret = rclc_executor_add_subscription_with_context(
 		&_executor,
 		&_subJoy,
 		&_joyMsg,
 		&DcMotorCar::SubscribeJoyCbkWrap, this,
 		ON_NEW_DATA );
+	RCLRETCHECK( ret );
 #endif
 
-	rclc_executor_add_subscription_with_context(
+	ret = rclc_executor_add_subscription_with_context(
 		&_executor,
 		&_subTwist,
 		&_twistMsg,
 		&DcMotorCar::SubscribeTwistCbkWrap, this,
 		ON_NEW_DATA );
-	
+	RCLRETCHECK( ret );
+
 	return true;
 }
 
@@ -244,18 +289,28 @@ boolean DcMotorCar::RosCreateEntities( void )
  */
 void DcMotorCar::RosDestroyEntities( void )
 {
+	rcl_ret_t ret;
 	rmw_context_t *rmw_context;
 
 	rmw_context = rcl_context_get_rmw_context( &_support.context );
 	(void)rmw_uros_set_context_entity_destroy_session_timeout( rmw_context, 0 );
 
-	rcl_publisher_fini( &_pubLog, &_node );
-	rcl_publisher_fini( &_pubImu, &_node );
-	rcl_subscription_fini( &_subJoy, &_node );
-	rcl_subscription_fini( &_subTwist, &_node );
-	rclc_executor_fini( &_executor );
-	rcl_node_fini( &_node );
-	rclc_support_fini( &_support );
+	ret = rcl_publisher_fini( &_pubLog, &_node );
+	RCLRETUNUSED( ret );
+	ret = rcl_publisher_fini( &_pubImu, &_node );
+	RCLRETUNUSED( ret );
+#if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
+	ret = rcl_subscription_fini( &_subJoy, &_node );
+	RCLRETUNUSED( ret );
+#endif
+	ret = rcl_subscription_fini( &_subTwist, &_node );
+	RCLRETUNUSED( ret );
+	ret = rclc_executor_fini( &_executor );
+	RCLRETUNUSED( ret );
+	ret = rcl_node_fini( &_node );
+	RCLRETUNUSED( ret );
+	ret = rclc_support_fini( &_support );
+	RCLRETUNUSED( ret );
 }
 
 
@@ -277,10 +332,10 @@ void DcMotorCar::MainLoop( void )
 		M5.Lcd.fillScreen( BLACK );
 		M5.Lcd.setCursor( 0, 5 );
 
-		if( _joy.isConnectedBle )
+		if( _joy.isConnectedBt )
 		{
 			M5.Lcd.println( " PS4 Controller Connected." );
-			M5.Lcd.printf( " Battery Level : %d\n", _joy.joyInfBle.battery );
+			M5.Lcd.printf( " Battery Level : %d\n", _joy.joyInfBt.battery );
 			M5.Lcd.printf( " MaxSpeed : %d\n", _reqMaxValue );
 			M5.Lcd.printf( "\n\n" );
 		}
@@ -301,7 +356,7 @@ void DcMotorCar::MainLoop( void )
 
 		isStop = true;
 
-		if( _joy.isConnectedBle )
+		if( _joy.isConnectedBt )
 		{
 			isStop = false;
 		}
@@ -339,17 +394,26 @@ void DcMotorCar::MainCycle( void )
 	xSemaphoreGive( _mutex );
 	SetMotorSpeed();
 	_drvMotor.RunMotor( _numWheel, &_speedMotor[0] );
+
+#ifdef _SERIAL_DEBUG_
+	{	// DEBUG
+		uint32_t time;
+		time = (uint32_t)millis();
+		_ctrlCycleCnt = time - _ctrlCycleTime;
+		_ctrlCycleTime = time;
+	}
+#endif
 }
 
 
 /**
- * @brief       BleJoyStickコントロール周期
+ * @brief       JoyStickコントロール周期
  * @note        なし
  * @param       なし
  * @retval      なし
  */
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-void DcMotorCar::BleJoyCtrlCycle( void )
+void DcMotorCar::BtJoyCtrlCycle( void )
 {
 	boolean isUpdate;
 	int32_t beforeMaxValue;
@@ -368,18 +432,18 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 
 		xSemaphoreTake( _mutex_joy , portMAX_DELAY );
 		beforeMaxValue = _reqMaxValue;
-		_joy.UpdateJoyStickInfoBle( &PS4.data );
-		if( _joy.isConnectedBle )
+		_joy.UpdateJoyStickInfoBt( &PS4.data );
+		if( _joy.isConnectedBt )
 		{
-			JoyControl( JOYSTKCONTYPE_BLE );
+			JoyControl( JOYSTKCONTYPE_BT );
 		}
 		reqMaxValue = _reqMaxValue;
 		xSemaphoreGive( _mutex_joy );
 
-		if( _joy.isBeforeConnectedBle != _joy.isConnectedBle ){
+		if( _joy.isBeforeConnectedBt != _joy.isConnectedBt ){
 			isUpdate = true;
 		}
-		if( _joy.beforeJoyInfBle.battery != _joy.joyInfBle.battery ){
+		if( _joy.beforeJoyInfBt.battery != _joy.joyInfBt.battery ){
 			isUpdate = true;
 		}
 		if( beforeMaxValue != reqMaxValue )
@@ -391,6 +455,15 @@ void DcMotorCar::BleJoyCtrlCycle( void )
 		{
 			_isLcdUpdate = isUpdate;
 		}
+
+#ifdef _SERIAL_DEBUG_
+		{	// DEBUG
+			uint32_t time;
+			time = (uint32_t)millis();
+			_btCycleCnt = time - _btCycleTime;
+			_btCycleTime = time;
+		}
+#endif
 	}
 }
 #endif
@@ -411,6 +484,15 @@ void DcMotorCar::RosCtrlCycle( void )
 		rclc_executor_spin_some( &_executor, RCL_MS_TO_NS(10) );
 	}
 	xSemaphoreGive( _mutex_ros );
+
+#ifdef _SERIAL_DEBUG_
+	{	// DEBUG
+		uint32_t time;
+		time = (uint32_t)millis();
+		_rosCycleCnt = time - _rosCycleTime;
+		_rosCycleTime = time;
+	}
+#endif
 }
 
 
@@ -423,50 +505,122 @@ void DcMotorCar::RosCtrlCycle( void )
 void DcMotorCar::RosMgrCtrlCycle( void )
 {
 	uint32_t getTime;
+	RosConnectionState beforeState;
 
 	getTime = (uint32_t)millis();
 
 	if( getTime > _rosMgrCtrlCycle )
 	{
 		_rosMgrCtrlCycle = getTime + DCMOTORCAR_ROSMGRCTRL_CYCLE;
+		beforeState = _rosConState;
 
 		switch( _rosConState )
 		{
+			case ROS_CNST_WIFI_DISCONNECTED :
+#if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
+				if( !_joy.isConnectedBt )
+				{
+#endif
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
+					WiFiInit();
+					_wifiRetryTime = (uint32_t)millis() + 3000;
+					_rosConState = ROS_CNST_WAITING_WIFI;
+#endif
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_SERIAL
+					_rosConState = ROS_CNST_WIFI_CONNECTED;
+#endif
+#if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
+				}
+#endif
+				break;
+			case ROS_CNST_WAITING_WIFI :
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
+				if( WiFi.status() == WL_CONNECTED )
+				{
+					_rosConState = ROS_CNST_WIFI_CONNECTED;
+				}
+				else
+				{
+					if( (uint32_t)millis() > _wifiRetryTime )
+					{
+						WiFi.disconnect( true, true );
+						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
+					}
+				}
+#endif
+				break;
+			case ROS_CNST_WIFI_CONNECTED :
+				RosInit();
+				_rosConState = ROS_CNST_WAITING_AGENT;
+				break;
 			case ROS_CNST_WAITING_AGENT :
-				if( rmw_uros_ping_agent(ROS_AGENT_PING_TIMEOUT, ROS_AGENT_PING_RETRY_CNTMAX) == RMW_RET_OK )
+				if( rmw_uros_ping_agent(ROS_AGENT_PING_TIMEOUT, 10) == RMW_RET_OK )
 				{
 					_rosAgentPingCnt = 0;
 					_rosConState = ROS_CNST_AGENT_AVAILABLE;
+				}
+				else{
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
+					if( WiFi.status() != WL_CONNECTED )
+					{
+						WiFi.disconnect( true, true );
+						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
+					}
+#endif
+#if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
+					if( _joy.isConnectedBt )
+					{
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
+						WiFi.disconnect( true, true );
+#endif
+						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
+					}
+#endif
 				}
 				break;
 			case ROS_CNST_AGENT_AVAILABLE :
 				if( RosCreateEntities() )
 				{
 					_rosConState = ROS_CNST_AGENT_CONNECTED;
-					_isLcdUpdate = true;
 				}
 				else
 				{
-					RosDestroyEntities();
-					_rosConState = ROS_CNST_WAITING_AGENT;
+					_rosConState = ROS_CNST_AGENT_DISCONNECTED;
 				}
 				break;
 			case ROS_CNST_AGENT_CONNECTED :
-				xSemaphoreTake( _mutex_ros , portMAX_DELAY );
-				if( rmw_uros_ping_agent(ROS_AGENT_PING_TIMEOUT, 1) != RMW_RET_OK )
+				if( rmw_uros_ping_agent(ROS_AGENT_PING_TIMEOUT, 3) != RMW_RET_OK )
 				{
 					_rosAgentPingCnt++;
 					if( _rosAgentPingCnt >= ROS_AGENT_PING_RETRY_CNTMAX )
 					{
 						_rosConState = ROS_CNST_AGENT_DISCONNECTED;
-						_isLcdUpdate = true;
 					}
 				}
 				else
 				{
+					xSemaphoreTake( _mutex_ros , portMAX_DELAY );
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
+					if( WiFi.status() != WL_CONNECTED )
+					{
+						RosDestroyEntities();
+						WiFi.disconnect( true, true );
+						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
+					}
+#endif
+#if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
+					if( _joy.isConnectedBt )
+					{
+						RosDestroyEntities();
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
+						WiFi.disconnect( true, true );
+#endif
+						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
+					}
+#endif
+					xSemaphoreGive( _mutex_ros );
 					_rosAgentPingCnt = 0;
 				}
-				xSemaphoreGive( _mutex_ros );
 				break;
 			case ROS_CNST_AGENT_DISCONNECTED :
 				RosDestroyEntities();
@@ -475,6 +629,17 @@ void DcMotorCar::RosMgrCtrlCycle( void )
 			default :
 				// DO_NOTHING
 				break;
+		}
+		if( beforeState != _rosConState )
+		{
+			if( _rosConState == ROS_CNST_AGENT_CONNECTED )
+			{
+				_isLcdUpdate = true;
+			}
+			if( beforeState == ROS_CNST_AGENT_CONNECTED )
+			{
+				_isLcdUpdate = true;
+			}
 		}
 	}
 }
@@ -488,6 +653,7 @@ void DcMotorCar::RosMgrCtrlCycle( void )
  */
 void DcMotorCar::PublishImuInfo( void )
 {
+	rcl_ret_t ret;
 	uint32_t getTime;
 	float accX = 0.0;
 	float accY = 0.0;
@@ -510,7 +676,8 @@ void DcMotorCar::PublishImuInfo( void )
 		_imuMsg.angular_velocity.y = gyroY;
 		_imuMsg.angular_velocity.z = gyroZ;
 
-		rcl_publish( &_pubImu, &_imuMsg, NULL );
+		ret = rcl_publish( &_pubImu, &_imuMsg, NULL );
+		RCLRETUNUSED( ret );
 
 		_imuInfPubCycle = getTime + DCMOTORCAR_IMUINF_SENDCYCLE;
 	}
@@ -674,10 +841,10 @@ void DcMotorCar::JoyControl( JoyStickConnectType i_type )
 	int32_t lSpeed;
 	int32_t rSpeed;
 
-	if( i_type == JOYSTKCONTYPE_BLE )
+	if( i_type == JOYSTKCONTYPE_BT )
 	{
-		joyInf = &_joy.joyInfBle;
-		beforeJoyInf = &_joy.beforeJoyInfBle;
+		joyInf = &_joy.joyInfBt;
+		beforeJoyInf = &_joy.beforeJoyInfBt;
 	}
 	else
 	{
@@ -890,6 +1057,25 @@ void DcMotorCar::SerialDebug( void )
 		// Serial.print(",");
 		// Serial.print(_rrWheel.reqSpeed);
 		// Serial.print(",");
+		// Serial.print("\n");
+
+		// Serial.print(esp_get_free_heap_size());
+		// Serial.print(",");
+		// Serial.print(_rosAgentPingCnt);
+		// Serial.print(",");
+		// Serial.print(_rosConState);
+		// Serial.print(",");
+		// Serial.print(_ctrlCycleTime);
+		// Serial.print(",");
+		// Serial.print(_btCycleTime);
+		// Serial.print(",");
+		// Serial.print(_rosCycleTime);
+		// Serial.print(",");
+		// Serial.print(_ctrlCycleCnt);
+		// Serial.print(",");
+		// Serial.print(_btCycleCnt);
+		// Serial.print(",");
+		// Serial.print(_rosCycleCnt);
 		// Serial.print("\n");
 
 		print_cycle = getTime + 10;

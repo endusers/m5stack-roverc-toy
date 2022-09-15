@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/09
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -33,7 +33,7 @@
 //----------------------------------------------------------------
 enum JoyStickConnectType_Tag
 {
-	JOYSTKCONTYPE_BLE				= 0	,
+	JOYSTKCONTYPE_BT				= 0	,
 	JOYSTKCONTYPE_ROS2					,
 };
 typedef enum JoyStickConnectType_Tag			JoyStickConnectType;
@@ -104,14 +104,14 @@ typedef struct JoyStickDirectionTbl_Tag			JoyStickDirectionTbl;
 class JoyStick
 {
 private:
-	static const JoyStickDirectionTbl JOYSTICKDIRECTION_BLE_TBL;
+	static const JoyStickDirectionTbl JOYSTICKDIRECTION_BT_TBL;
 	static const JoyStickDirectionTbl JOYSTICKDIRECTION_ROS2_TBL;
 
 public:
-	boolean isConnectedBle;
-	boolean isBeforeConnectedBle;
-	JoyInfo joyInfBle;
-	JoyInfo beforeJoyInfBle;
+	boolean isConnectedBt;
+	boolean isBeforeConnectedBt;
+	JoyInfo joyInfBt;
+	JoyInfo beforeJoyInfBt;
 	JoyInfo joyInfRos2;
 	JoyInfo beforeJoyInfRos2;
 
@@ -120,7 +120,7 @@ public:
 
 	void Init( void );                                                                                      // イニシャライズ
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-	void UpdateJoyStickInfoBle( ps4_t *i_ps4 );                                                             // JoyStickInfo更新
+	void UpdateJoyStickInfoBt( ps4_t *i_ps4 );                                                              // JoyStickInfo更新
 #endif
 #if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
 	void UpdateJoyStickInfoRos2( sensor_msgs__msg__Joy *i_msg );                                            // JoyStickInfo更新

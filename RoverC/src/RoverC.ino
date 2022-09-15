@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/10
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -47,7 +47,7 @@
 //----------------------------------------------------------------
 extern void IRAM_ATTR ControlCycle();
 extern void ControlTask( void * pvParameters );
-extern void BleCtrlTask( void * pvParameters );
+extern void BtCtrlTask( void * pvParameters );
 extern void RosTask( void * pvParameters );
 extern void RosMgrTask( void * pvParameters );
 
@@ -62,7 +62,7 @@ extern void RosMgrTask( void * pvParameters );
 //----------------------------------------------------------------
 hw_timer_t *timer = NULL;
 TaskHandle_t xCtrlTask;
-TaskHandle_t xBleCtrlTask;
+TaskHandle_t xBtCtrlTask;
 TaskHandle_t xRosTask;
 TaskHandle_t xRosMgrTask;
 EventGroupHandle_t xEventGroup;
@@ -89,7 +89,7 @@ void setup() {
 	xTaskCreateUniversal(
 		ControlTask,
 		"ControlTask",
-		8192,
+		2048,
 		NULL,
 		5,
 		&xCtrlTask,
@@ -98,12 +98,12 @@ void setup() {
 
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
 	xTaskCreateUniversal(
-		BleCtrlTask,
-		"BleCtrlTask",
-		8192,
+		BtCtrlTask,
+		"BtCtrlTask",
+		4096,
 		NULL,
 		4,
-		&xBleCtrlTask,
+		&xBtCtrlTask,
 		APP_CPU_NUM
 	);
 #endif
@@ -111,22 +111,22 @@ void setup() {
 	xTaskCreateUniversal(
 		RosTask,
 		"RosTask",
-		8192,
+		4096,
 		NULL,
 		3,
 		&xRosTask,
 		APP_CPU_NUM
 	);
 
-	xTaskCreateUniversal(
-		RosMgrTask,
-		"RosMgrTask",
-		8192,
-		NULL,
-		2,
-		&xRosMgrTask,
-		APP_CPU_NUM
-	);
+	// xTaskCreateUniversal(
+	// 	RosMgrTask,
+	// 	"RosMgrTask",
+	// 	4096,
+	// 	NULL,
+	// 	2,
+	// 	&xRosMgrTask,
+	// 	APP_CPU_NUM
+	// );
 
 	timer = timerBegin( 0, 80, true );
 	timerAttachInterrupt( timer, &ControlCycle, true );
@@ -189,17 +189,17 @@ void ControlTask( void * pvParameters )
 
 
 /**
- * @brief      BleCtrlタスク
+ * @brief      BtCtrlタスク
  * @note       なし
  * @param      なし
  * @retval     なし
  */
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-void BleCtrlTask( void * pvParameters )
+void BtCtrlTask( void * pvParameters )
 {
 	for(;;)
 	{
-		car.BleJoyCtrlCycle();
+		car.BtJoyCtrlCycle();
 		vTaskDelay(1);
 	}
 }
@@ -216,6 +216,7 @@ void RosTask( void * pvParameters )
 {
 	for(;;)
 	{
+		car.RosMgrCtrlCycle();
 		car.RosCtrlCycle();
 		vTaskDelay(1);
 	}
@@ -228,12 +229,11 @@ void RosTask( void * pvParameters )
  * @param      なし
  * @retval     なし
  */
-void RosMgrTask( void * pvParameters )
-{
-	car.RosInit();
-	for(;;)
-	{
-		car.RosMgrCtrlCycle();
-		vTaskDelay(1);
-	}
-}
+// void RosMgrTask( void * pvParameters )
+// {
+// 	for(;;)
+// 	{
+// 		car.RosMgrCtrlCycle();
+// 		vTaskDelay(1);
+// 	}
+// }

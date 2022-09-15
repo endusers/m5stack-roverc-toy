@@ -5,7 +5,7 @@
  * @note        なし
  * 
  * @version     1.1.0
- * @date        2022/08/15
+ * @date        2022/09/10
  * 
  * @copyright   (C) 2021-2022 Motoyuki Endo
  */
@@ -43,7 +43,11 @@
 #define DCMOTORCAR_NODE_NAME					"micro_ros_roverc_node"
 
 #define ROS_AGENT_PING_TIMEOUT					(50)							// 50ms
-#define ROS_AGENT_PING_RETRY_CNTMAX				(10)							// 10count
+#define ROS_AGENT_PING_RETRY_CNTMAX				(5)								// 5count(5 * DCMOTORCAR_ROSMGRCTRL_CYCLE ms)
+
+#define ROS_AGENT_COMMODE_SERIAL				1
+#define ROS_AGENT_COMMODE_UDP					2
+#define ROS_AGENT_COMMODE						ROS_AGENT_COMMODE_UDP
 
 
 //----------------------------------------------------------------
@@ -51,7 +55,10 @@
 //----------------------------------------------------------------
 enum RosConnectionState_Tag
 {
-	ROS_CNST_WAITING_AGENT				= 0 ,
+	ROS_CNST_WIFI_DISCONNECTED			= 0	,
+	ROS_CNST_WAITING_WIFI					,
+	ROS_CNST_WIFI_CONNECTED					,
+	ROS_CNST_WAITING_AGENT					,
 	ROS_CNST_AGENT_AVAILABLE				,
 	ROS_CNST_AGENT_CONNECTED				,
 	ROS_CNST_AGENT_DISCONNECTED				,
@@ -93,6 +100,9 @@ private:
 	JoyStick _joy;
 	uint32_t _JoyCtrlCycle;
 
+	uint32_t _wifiRetryTime;
+
+	struct micro_ros_agent_locator _locator;
 	rcl_allocator_t _allocator;
 	rclc_support_t _support;
 	rcl_node_t _node;
@@ -123,6 +133,12 @@ private:
 	void JoyControl( JoyStickConnectType i_type );                      // JoyStickコントロール
 #ifdef _SERIAL_DEBUG_
 	void SerialDebug( void );                                           // シリアルデバッグ
+	volatile uint32_t _ctrlCycleTime;	// DEBUG
+	volatile uint32_t _btCycleTime;		// DEBUG
+	volatile uint32_t _rosCycleTime;	// DEBUG
+	volatile uint32_t _ctrlCycleCnt;	// DEBUG
+	volatile uint32_t _btCycleCnt;		// DEBUG
+	volatile uint32_t _rosCycleCnt;		// DEBUG
 #endif
 
 public:
@@ -130,13 +146,14 @@ public:
 	~DcMotorCar( void );                                                // デストラクタ
 
 	void Init( void );                                                  // イニシャライズ
+	void WiFiInit( void );                                              // WiFiイニシャライズ
 	void RosInit( void );                                               // Rosイニシャライズ
 	boolean RosCreateEntities( void );                                  // Rosエンティティ生成
 	void RosDestroyEntities( void );                                    // Rosエンティティ破棄
 	void MainLoop( void );                                              // メインループ
 	void MainCycle( void );                                             // 制御周期ハンドラ
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
-	void BleJoyCtrlCycle( void );                                       // BleJoyStickコントロール周期
+	void BtJoyCtrlCycle( void );                                        // JoyStickコントロール周期
 #endif
 	void RosCtrlCycle( void );                                          // ROSコントロール周期
 	void RosMgrCtrlCycle( void );                                       // ROS管理コントロール周期

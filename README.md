@@ -2,8 +2,6 @@
 
 ## はじめに
 
----
-
 本ソフトはM5StackのRoveCをPS4コントローラーで動かすソフトである
 
 - Bluetooth接続の場合
@@ -17,8 +15,6 @@
   RoveCからのIMUのデータをmicroROSのImuメッセージとして配信する  
 
 ## 動作環境
-
----
 
 - RoverC-Pro
 - M5StickC PLUS
@@ -41,8 +37,6 @@
   - micro_ros_agent
 
 ## ビルド
-
----
 
 - コンフィグ
 
@@ -120,8 +114,6 @@
 
 ## 起動方法
 
----
-
   - Bluetooth接続の場合
 
     1. SixaxisPairToolでPS4コントローラにMasterのMACアドレスを書き込む
@@ -156,8 +148,6 @@
     1. M5StickC PLUSとRoverC-Proの電源を入れる
 
 ## 操作方法
-
----
 
 - アクセル
 
