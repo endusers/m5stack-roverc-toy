@@ -45,6 +45,10 @@
 #define ROS_AGENT_PING_TIMEOUT					(50)							// 50ms
 #define ROS_AGENT_PING_RETRY_CNTMAX				(5)								// 5count(5 * DCMOTORCAR_ROSMGRCTRL_CYCLE ms)
 
+#define ROS_AGENT_COMMODE_SERIAL				1
+#define ROS_AGENT_COMMODE_UDP					2
+#define ROS_AGENT_COMMODE						ROS_AGENT_COMMODE_UDP
+
 
 //----------------------------------------------------------------
 //  <enum>

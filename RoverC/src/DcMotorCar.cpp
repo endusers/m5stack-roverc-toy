@@ -185,6 +185,7 @@ void DcMotorCar::WiFiInit( void )
  */
 void DcMotorCar::RosInit( void )
 {
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 	NvmConfig nvm;
 
 	_locator.address.fromString( (char *)nvm.rosAgentIp.c_str() );
@@ -198,6 +199,10 @@ void DcMotorCar::RosInit( void )
 		arduino_wifi_transport_write,
 		arduino_wifi_transport_read
 	);
+#endif
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_SERIAL
+	set_microros_transports();
+#endif
 }
 
 
@@ -516,14 +521,20 @@ void DcMotorCar::RosMgrCtrlCycle( void )
 				if( !_joy.isConnectedBt )
 				{
 #endif
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 					WiFiInit();
 					_wifiRetryTime = (uint32_t)millis() + 3000;
 					_rosConState = ROS_CNST_WAITING_WIFI;
+#endif
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_SERIAL
+					_rosConState = ROS_CNST_WIFI_CONNECTED;
+#endif
 #if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
 				}
 #endif
 				break;
 			case ROS_CNST_WAITING_WIFI :
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 				if( WiFi.status() == WL_CONNECTED )
 				{
 					_rosConState = ROS_CNST_WIFI_CONNECTED;
@@ -536,6 +547,7 @@ void DcMotorCar::RosMgrCtrlCycle( void )
 						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
 					}
 				}
+#endif
 				break;
 			case ROS_CNST_WIFI_CONNECTED :
 				RosInit();
@@ -548,15 +560,19 @@ void DcMotorCar::RosMgrCtrlCycle( void )
 					_rosConState = ROS_CNST_AGENT_AVAILABLE;
 				}
 				else{
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 					if( WiFi.status() != WL_CONNECTED )
 					{
 						WiFi.disconnect( true, true );
 						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
 					}
+#endif
 #if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
 					if( _joy.isConnectedBt )
 					{
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 						WiFi.disconnect( true, true );
+#endif
 						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
 					}
 #endif
@@ -584,17 +600,21 @@ void DcMotorCar::RosMgrCtrlCycle( void )
 				else
 				{
 					xSemaphoreTake( _mutex_ros , portMAX_DELAY );
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 					if( WiFi.status() != WL_CONNECTED )
 					{
 						RosDestroyEntities();
 						WiFi.disconnect( true, true );
 						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
 					}
+#endif
 #if DCMOTORCAR_JOYCONNECT_MODE == DCMOTORCAR_JOYCONNECT_PREFERBLUETOOTH
 					if( _joy.isConnectedBt )
 					{
 						RosDestroyEntities();
+#if ROS_AGENT_COMMODE == ROS_AGENT_COMMODE_UDP
 						WiFi.disconnect( true, true );
+#endif
 						_rosConState = ROS_CNST_WIFI_DISCONNECTED;
 					}
 #endif
