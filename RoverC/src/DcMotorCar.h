@@ -4,10 +4,10 @@
  * @brief       DcMotorCar
  * @note        なし
  * 
- * @version     1.1.0
- * @date        2022/09/10
+ * @version     1.1.1
+ * @date        2023/06/25
  * 
- * @copyright   (C) 2021-2022 Motoyuki Endo
+ * @copyright   (C) 2021-2023 Motoyuki Endo
  */
 #ifndef __DCMOTORCAR_H
 #define __DCMOTORCAR_H

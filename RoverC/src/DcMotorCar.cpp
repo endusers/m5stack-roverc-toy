@@ -4,10 +4,10 @@
  * @brief       DcMotorCar
  * @note        なし
  * 
- * @version     1.1.0
- * @date        2022/09/10
+ * @version     1.1.1
+ * @date        2023/06/25
  * 
- * @copyright   (C) 2021-2022 Motoyuki Endo
+ * @copyright   (C) 2021-2023 Motoyuki Endo
  */
 #include "DcMotorCar.h"
 
@@ -669,12 +669,12 @@ void DcMotorCar::PublishImuInfo( void )
 		M5.IMU.getGyroData( &gyroX, &gyroY, &gyroZ );
 		M5.IMU.getAccelData( &accX, &accY, &accZ );
 
-		_imuMsg.linear_acceleration.x = accX;
-		_imuMsg.linear_acceleration.y = accY;
-		_imuMsg.linear_acceleration.z = accZ;
-		_imuMsg.angular_velocity.x = gyroX;
-		_imuMsg.angular_velocity.y = gyroY;
-		_imuMsg.angular_velocity.z = gyroZ;
+		_imuMsg.linear_acceleration.x = accX * 9.8;	// G_TO_M/S2
+		_imuMsg.linear_acceleration.y = accY * 9.8;	// G_TO_M/S2
+		_imuMsg.linear_acceleration.z = accZ * 9.8;	// G_TO_M/S2
+		_imuMsg.angular_velocity.x = gyroX *  ( M_PI / 180.0 );	// DEG_TO_RAD
+		_imuMsg.angular_velocity.y = gyroY *  ( M_PI / 180.0 );	// DEG_TO_RAD
+		_imuMsg.angular_velocity.z = gyroZ *  ( M_PI / 180.0 );	// DEG_TO_RAD
 
 		ret = rcl_publish( &_pubImu, &_imuMsg, NULL );
 		RCLRETUNUSED( ret );
