@@ -61,6 +61,13 @@ typedef enum JoyStickDirection_Tag				JoyStickDirection;
 //----------------------------------------------------------------
 //  <struct>
 //----------------------------------------------------------------
+struct JoyEventCbk_Tag
+{
+	void *object;
+	void (*function)( void *obj );
+};
+typedef struct JoyEventCbk_Tag					JoyEventCbk;
+
 struct JoyInfo_Tag
 {
 	float lStickH;
@@ -108,6 +115,7 @@ private:
 	static const JoyStickDirectionTbl JOYSTICKDIRECTION_ROS2_TBL;
 
 public:
+	static JoyEventCbk cbkEvent;
 	boolean isConnectedBt;
 	boolean isBeforeConnectedBt;
 	JoyInfo joyInfBt;
@@ -120,6 +128,8 @@ public:
 
 	void Init( void );                                                                                      // イニシャライズ
 #if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+	static void EventCbk( void );                                                                           // コールバック
+	void RegisterEventCbk( void *obj, void (*function)( void *obj ) );                                      // コールバック登録
 	void UpdateJoyStickInfoBt( ps4_t *i_ps4 );                                                              // JoyStickInfo更新
 #endif
 #if JOYSTICK_ROS2_TYPE == JOYSTICK_ROS2_SUPPORT
