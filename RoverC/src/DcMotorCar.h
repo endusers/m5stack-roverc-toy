@@ -4,7 +4,7 @@
  * @brief       DcMotorCar
  * @note        なし
  * 
- * @version     1.1.1
+ * @version     1.2.0
  * @date        2023/06/25
  * 
  * @copyright   (C) 2021-2023 Motoyuki Endo
@@ -41,6 +41,7 @@
 #define DCMOTORCAR_IMUINF_SENDCYCLE				(100)							// 100ms
 
 #define DCMOTORCAR_NODE_NAME					"micro_ros_roverc_node"
+#define DCMOTORCAR_ROS_DOMAIN_ID				(0)
 
 #define ROS_AGENT_PING_TIMEOUT					(50)							// 50ms
 #define ROS_AGENT_PING_RETRY_CNTMAX				(5)								// 5count(5 * DCMOTORCAR_ROSMGRCTRL_CYCLE ms)
@@ -48,6 +49,9 @@
 #define ROS_AGENT_COMMODE_SERIAL				1
 #define ROS_AGENT_COMMODE_UDP					2
 #define ROS_AGENT_COMMODE						ROS_AGENT_COMMODE_UDP
+
+#define DCMOTORCAR_CMDVEL_COMFAILTIME			(1000 / 10)						// 1000ms
+#define DCMOTORCAR_JOYCTL_COMFAILTIME			(1000 / 10)						// 1000ms
 
 
 //----------------------------------------------------------------
@@ -95,7 +99,11 @@ private:
 
 	int32_t _reqMaxValue;
 
+	boolean _isJoyCtl;
 	boolean _isLcdUpdate;
+
+	uint32_t _failCmdVelCnt;
+	uint32_t _failJoyCtlCnt;
 
 	JoyStick _joy;
 	uint32_t _JoyCtrlCycle;
@@ -127,17 +135,24 @@ private:
 	static void SubscribeJoyCbkWrap( const void *arg, void *obj );      // Joy情報購読ハンドラ
 	void SubscribeJoyCbk( const void *msgin );                          // Joy情報購読
 #endif
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+	static void BtJoyEventCbkWrap( void *obj );                         // JoyStickイベントコールバック
+	void BtJoyEventCbk( void );                                         // JoyStickイベントコールバック
+#endif
 	static void SubscribeTwistCbkWrap( const void *arg, void *obj );    // Twist情報購読ハンドラ
 	void SubscribeTwistCbk( const void *msgin );                        // Twist情報購読
 	void SetMotorSpeed( void );                                         // モーター速度設定
 	void JoyControl( JoyStickConnectType i_type );                      // JoyStickコントロール
+	void CommunicationFail( void );                                     // 通信途絶
 #ifdef _SERIAL_DEBUG_
 	void SerialDebug( void );                                           // シリアルデバッグ
 	volatile uint32_t _ctrlCycleTime;	// DEBUG
 	volatile uint32_t _btCycleTime;		// DEBUG
+	volatile uint32_t _btEvtCbkTime;	// DEBUG
 	volatile uint32_t _rosCycleTime;	// DEBUG
 	volatile uint32_t _ctrlCycleCnt;	// DEBUG
 	volatile uint32_t _btCycleCnt;		// DEBUG
+	volatile uint32_t _btEvtCbkCnt;		// DEBUG
 	volatile uint32_t _rosCycleCnt;		// DEBUG
 #endif
 

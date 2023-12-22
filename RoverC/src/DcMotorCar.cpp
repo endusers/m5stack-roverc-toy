@@ -4,7 +4,7 @@
  * @brief       DcMotorCar
  * @note        なし
  * 
- * @version     1.1.1
+ * @version     1.2.0
  * @date        2023/06/25
  * 
  * @copyright   (C) 2021-2023 Motoyuki Endo
@@ -61,6 +61,13 @@ DcMotorCar::DcMotorCar( void )
 
 	_numWheel = Config.num;
 	_speedMotor = new int32_t[_numWheel];
+
+	_isJoyCtl = false;
+
+	_JoyCtrlCycle = 0;
+
+	_failCmdVelCnt = 0;
+	_failJoyCtlCnt = 0;
 
 	_imuInfPubCycle = 0;
 	_imuMsg.linear_acceleration.x = 0.0;
@@ -147,6 +154,9 @@ void DcMotorCar::Init( void )
 
 	_isLcdUpdate = true;
 
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+	_joy.RegisterEventCbk( this, &DcMotorCar::BtJoyEventCbkWrap );
+#endif
 	_joy.Init();
 	_JoyCtrlCycle = 0;
 
@@ -216,6 +226,7 @@ void DcMotorCar::RosInit( void )
 boolean DcMotorCar::RosCreateEntities( void )
 {
 	rcl_ret_t ret;
+	rcl_node_options_t node_ops;
 
 	_imuInfPubCycle = (uint32_t)millis();
 
@@ -223,8 +234,15 @@ boolean DcMotorCar::RosCreateEntities( void )
 	ret = rclc_support_init( &_support, 0, NULL, &_allocator );
 	RCLRETCHECK( ret );
 
-	ret = rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
+	node_ops = rcl_node_get_default_options();
+
+	node_ops.domain_id = (size_t)(DCMOTORCAR_ROS_DOMAIN_ID);
+
+	ret = rclc_node_init_with_options( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support, &node_ops );
 	RCLRETCHECK( ret );
+
+	// ret = rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
+	// RCLRETCHECK( ret );
 
 	ret = rclc_publisher_init_best_effort(
 		&_pubLog,
@@ -711,6 +729,9 @@ void DcMotorCar::SubscribeJoyCbk( const void *msgin )
 	int32_t beforeMaxValue;
 	uint32_t reqMaxValue;
 
+	_failJoyCtlCnt = 0;
+	_isJoyCtl = true;
+
 	xSemaphoreTake( _mutex_joy , portMAX_DELAY );
 	beforeMaxValue = _reqMaxValue;
 	_joy.UpdateJoyStickInfoRos2( (sensor_msgs__msg__Joy *)msgin );
@@ -722,6 +743,45 @@ void DcMotorCar::SubscribeJoyCbk( const void *msgin )
 	{
 		ROS_INFO( "MaxSpeed : %i" , reqMaxValue );
 	}
+}
+#endif
+
+
+/**
+ * @brief       JoyStickイベントコールバック
+ * @note        なし
+ * @param[in]   obj : コールバックのthisポインタ
+ * @retval      なし
+ */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+void DcMotorCar::BtJoyEventCbkWrap( void *obj )
+{
+	return reinterpret_cast<DcMotorCar*>(obj)->BtJoyEventCbk();
+}
+#endif
+
+
+/**
+ * @brief       JoyStickイベントコールバック
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+void DcMotorCar::BtJoyEventCbk( void )
+{
+	_failJoyCtlCnt = 0;
+	_isJoyCtl = true;
+#ifdef _SERIAL_DEBUG_
+		{	// DEBUG
+			uint32_t time;
+			time = (uint32_t)millis();
+			_btEvtCbkCnt = time - _btEvtCbkTime;
+			_btEvtCbkTime = time;
+			Serial.print( _btEvtCbkCnt );
+			Serial.print("\n");
+		}
+#endif
 }
 #endif
 
@@ -763,6 +823,8 @@ void DcMotorCar::SubscribeTwistCbk( const void *msgin )
 	int32_t frSpeed;
 	int32_t rlSpeed;
 	int32_t rrSpeed;
+
+	_failCmdVelCnt = 0;
 
 	lx = 0.0215;
 	ly = 0.0215;
@@ -1028,6 +1090,49 @@ void DcMotorCar::JoyControl( JoyStickConnectType i_type )
 	_rlWheel.RollWheel( rlSpeed );
 	_rrWheel.RollWheel( rrSpeed );
 	xSemaphoreGive( _mutex );
+}
+
+
+/**
+ * @brief       通信途絶
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+void DcMotorCar::CommunicationFail( void )
+{
+	_failCmdVelCnt++;
+	_failJoyCtlCnt++;
+
+	_failCmdVelCnt = constrain( _failCmdVelCnt , 0 , DCMOTORCAR_CMDVEL_COMFAILTIME );
+	_failJoyCtlCnt = constrain( _failJoyCtlCnt , 0 , DCMOTORCAR_JOYCTL_COMFAILTIME );
+
+	if( _isJoyCtl )
+	{
+		if( _failJoyCtlCnt >= DCMOTORCAR_JOYCTL_COMFAILTIME )
+		{
+			_isJoyCtl = false;
+			xSemaphoreTake( _mutex , portMAX_DELAY );
+			_flWheel.StopWheel();
+			_frWheel.StopWheel();
+			_rlWheel.StopWheel();
+			_rrWheel.StopWheel();
+			xSemaphoreGive( _mutex );
+		}
+	}
+	else
+	{
+		if( _failCmdVelCnt >= DCMOTORCAR_CMDVEL_COMFAILTIME )
+		{
+			xSemaphoreTake( _mutex , portMAX_DELAY );
+			_flWheel.StopWheel();
+			_frWheel.StopWheel();
+			_rlWheel.StopWheel();
+			_rrWheel.StopWheel();
+			xSemaphoreGive( _mutex );
+		}
+	}
+	
 }
 
 

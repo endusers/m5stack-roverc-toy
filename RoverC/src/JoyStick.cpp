@@ -63,6 +63,12 @@ const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_ROS2_TBL =
 
 
 //----------------------------------------------------------------
+//  <table>
+//----------------------------------------------------------------
+JoyEventCbk JoyStick::cbkEvent = { NULL, NULL };
+
+
+//----------------------------------------------------------------
 //  <function>
 //----------------------------------------------------------------
 /**
@@ -73,6 +79,9 @@ const JoyStickDirectionTbl JoyStick::JOYSTICKDIRECTION_ROS2_TBL =
  */
 JoyStick::JoyStick( void )
 {
+	cbkEvent.object = NULL;
+	cbkEvent.function = NULL;
+
 	isConnectedBt = false;
 	isBeforeConnectedBt = false;
 	memset( &joyInfBt , 0 , sizeof(joyInfBt) );
@@ -115,8 +124,41 @@ void JoyStick::Init( void )
 	// PS4.begin( bt_mac_addr );
 
 	PS4.begin( BLUETOOTH_MAC_ADDRESS );
+	PS4.attach( (PS4Controller::callback_t)&JoyStick::EventCbk );
 #endif
 }
+
+
+/**
+ * @brief       コールバック
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+void JoyStick::EventCbk( void )
+{
+	if( cbkEvent.object && cbkEvent.function )
+	{
+		cbkEvent.function( cbkEvent.object );
+	}
+}
+#endif
+
+
+/**
+ * @brief       コールバック登録
+ * @note        なし
+ * @param       なし
+ * @retval      なし
+ */
+#if JOYSTICK_BLUETOOTH_TYPE == JOYSTICK_BLUETOOTH_SUPPORT
+void JoyStick::RegisterEventCbk( void *obj, void (*function)( void *obj ) )
+{
+	cbkEvent.object = obj;
+	cbkEvent.function = function;
+}
+#endif
 
 
 /**
