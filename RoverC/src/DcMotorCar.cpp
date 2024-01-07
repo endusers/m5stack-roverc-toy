@@ -4,10 +4,10 @@
  * @brief       DcMotorCar
  * @note        なし
  * 
- * @version     1.2.0
- * @date        2023/06/25
+ * @version     1.3.0
+ * @date        2024/01/05
  * 
- * @copyright   (C) 2021-2023 Motoyuki Endo
+ * @copyright   (C) 2021-2024 Motoyuki Endo
  */
 #include "DcMotorCar.h"
 
@@ -226,23 +226,23 @@ void DcMotorCar::RosInit( void )
 boolean DcMotorCar::RosCreateEntities( void )
 {
 	rcl_ret_t ret;
-	rcl_node_options_t node_ops;
+	rcl_init_options_t init_ops;
 
 	_imuInfPubCycle = (uint32_t)millis();
 
 	_allocator = rcl_get_default_allocator();
-	ret = rclc_support_init( &_support, 0, NULL, &_allocator );
+
+	init_ops = rcl_get_zero_initialized_init_options();
+	ret = rcl_init_options_init( &init_ops, _allocator );
+	RCLRETCHECK( ret );
+	ret = rcl_init_options_set_domain_id( &init_ops, (size_t)(DCMOTORCAR_ROS_DOMAIN_ID) );
 	RCLRETCHECK( ret );
 
-	node_ops = rcl_node_get_default_options();
-
-	node_ops.domain_id = (size_t)(DCMOTORCAR_ROS_DOMAIN_ID);
-
-	ret = rclc_node_init_with_options( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support, &node_ops );
+	ret = rclc_support_init_with_options( &_support, 0, NULL, &init_ops, &_allocator );
 	RCLRETCHECK( ret );
 
-	// ret = rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
-	// RCLRETCHECK( ret );
+	ret = rclc_node_init_default( &_node, (const char *)DCMOTORCAR_NODE_NAME, "", &_support );
+	RCLRETCHECK( ret );
 
 	ret = rclc_publisher_init_best_effort(
 		&_pubLog,
